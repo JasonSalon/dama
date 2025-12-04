@@ -1,4 +1,5 @@
 export type PlayerColor = 'white' | 'black';
+export type GameMode = 'pvp' | 'pve';
 
 export interface Position {
   row: number;
@@ -28,9 +29,17 @@ export interface GameState {
   mustCaptureFrom: Position | null; // If a player is in a multi-jump sequence
 }
 
+export interface HistoryState {
+  board: BoardState;
+  turn: PlayerColor;
+  mustCaptureFrom: Position | null;
+}
+
 export interface SerializedGame {
   board: BoardState;
   turn: PlayerColor;
   winner: PlayerColor | 'draw' | null;
   mustCaptureFrom: Position | null;
+  gameMode: GameMode;
+  history: HistoryState[];
 }
