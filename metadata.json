@@ -1,0 +1,5 @@
+{
+  "name": "Filipino Dama Master",
+  "description": "A fully functional, offline-capable Filipino Dama (Checkers) game featuring flying kings, mandatory max-capture rules, and auto-save functionality.",
+  "requestFramePermissions": []
+}
