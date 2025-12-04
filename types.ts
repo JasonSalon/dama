@@ -20,6 +20,14 @@ export interface Move {
   isPromotion?: boolean;
 }
 
+export interface MoveResult {
+  board: BoardState;
+  turnEnded: boolean;
+  mustCaptureFrom: Position | null;
+  promoted: boolean;
+  captured: boolean;
+}
+
 export interface GameState {
   board: BoardState;
   turn: PlayerColor;

@@ -1,4 +1,4 @@
-import { BoardState, Move, Piece, PlayerColor, Position } from '../types';
+import { BoardState, Move, Piece, PlayerColor, Position, MoveResult } from '../types';
 import { BOARD_SIZE } from '../constants';
 
 const DIRECTIONS = [
@@ -81,16 +81,8 @@ const getMovesForPiece = (
   }
 
   // 2. CAPTURE MOVES
-  // For standard men, capture is 2 squares away.
-  // For flying kings, capture is: Slide -> Find Enemy -> Land in empty spots behind.
-  
   if (!piece.isKing) {
-    // Men Captures (All 4 directions allowed for capturing in international/some variants, 
-    // BUT in Filipino Dama, MEN CAN ONLY CAPTURE FORWARD DIAGONALLY).
-    // Actually, distinct Filipino rule: Men can only capture forward? 
-    // Correction: Most sources say Men can only capture FORWARD. 
-    // Some local variants allow backward capture. I will implement FORWARD ONLY for Men to distinguish from Kings clearly.
-    
+    // Men Captures (Forward Diagonal Only)
     for (const dir of forwardDirs) { 
       const midR = row + dir.r;
       const midC = col + dir.c;
@@ -185,8 +177,7 @@ const getMaxCaptureChain = (
     tempBoard[move.to.row][move.to.col] = tempBoard[move.from.row][move.from.col];
     tempBoard[move.from.row][move.from.col] = null;
 
-    // Check promotion within chain? In Filipino Dama, if a Man promotes, turn usually ends.
-    // Logic: If piece was Man, and reaches end row:
+    // Check promotion within chain
     const isMan = !piece.isKing;
     const isWhite = piece.color === 'white';
     const reachedEnd = (isWhite && move.to.row === 0) || (!isWhite && move.to.row === BOARD_SIZE - 1);
@@ -249,14 +240,8 @@ export const getValidMovesForPlayer = (
     // Filter sequences that match the max count
     const bestSequences = captureSequences.filter(s => s.count === maxCaptureCount);
     
-    // We only return the *first move* of these sequences as valid actions for the UI.
-    // The UI handles the sequence step-by-step.
-    // However, if we are in the middle of a sequence (mustCaptureFrom is set),
-    // we assume the 'board' passed in is the intermediate state.
-    // Actually, getMaxCaptureChain calculates from current state. 
-    
     // Flatten to just the immediate valid next moves
-    const distinctMoves = new Map<string, Move>(); // Use key "r-c-to-r-c" to dedup
+    const distinctMoves = new Map<string, Move>(); 
     
     bestSequences.forEach(seq => {
         const firstMove = seq.moves[0]; // The immediate next step
@@ -278,13 +263,63 @@ export const getValidMovesForPlayer = (
   return allMoves;
 };
 
+// Pure function to apply a move and return the new state details
+// This is used by both the Game Engine (App.tsx) and the AI (ai.ts)
+export const applyMove = (board: BoardState, move: Move): MoveResult => {
+  const newBoard = board.map((row) => row.map((p) => (p ? { ...p } : null)));
+  const movingPiece = newBoard[move.from.row][move.from.col]!;
+
+  // Move Piece
+  newBoard[move.to.row][move.to.col] = movingPiece;
+  newBoard[move.from.row][move.from.col] = null;
+
+  // Remove Captured Pieces
+  const captured = move.captures.length > 0;
+  if (captured) {
+    move.captures.forEach((pos) => {
+      newBoard[pos.row][pos.col] = null;
+    });
+  }
+
+  // Handle Promotion
+  let promoted = false;
+  if (!movingPiece.isKing) {
+    if ((movingPiece.color === 'white' && move.to.row === 0) ||
+        (movingPiece.color === 'black' && move.to.row === BOARD_SIZE - 1)) {
+      movingPiece.isKing = true;
+      promoted = true;
+    }
+  }
+
+  // Determine if turn continues
+  let mustCaptureFrom: Position | null = null;
+  let turnEnded = true;
+
+  if (captured && !promoted) {
+    // Check if more captures are available for this specific piece
+    const nextMoves = getValidMovesForPlayer(newBoard, movingPiece.color, move.to);
+    // If next moves exist (and they must be captures because getValidMovesForPlayer enforces max capture locally if mustCaptureFrom is set),
+    // but we need to be careful: getValidMovesForPlayer returns moves.
+    // If we pass 'move.to' as 'mustCaptureFrom', it will return captures if any exist.
+    if (nextMoves.length > 0) {
+       mustCaptureFrom = move.to;
+       turnEnded = false;
+    }
+  }
+
+  return {
+    board: newBoard,
+    turnEnded,
+    mustCaptureFrom,
+    promoted,
+    captured
+  };
+};
+
 export const checkWinner = (board: BoardState): PlayerColor | 'draw' | null => {
   let whiteCount = 0;
   let blackCount = 0;
-  let whiteHasMoves = false;
-  let blackHasMoves = false;
 
-  // Simple count check
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c]?.color === 'white') whiteCount++;
@@ -294,10 +329,6 @@ export const checkWinner = (board: BoardState): PlayerColor | 'draw' | null => {
 
   if (whiteCount === 0) return 'black';
   if (blackCount === 0) return 'white';
-
-  // Stalemate check is computationally expensive to do every frame, 
-  // but strictly necessary. For this simplified version, we rely on piece count
-  // or if 'getValidMoves' returns empty for the current player.
   
   return null; 
 };

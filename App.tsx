@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BOARD_SIZE, COLORS } from './constants';
+import React, { useState, useEffect, useCallback } from 'react';
+import { COLORS } from './constants';
 import { BoardState, Move, PlayerColor, Position, SerializedGame, GameMode, HistoryState } from './types';
-import { createInitialBoard, getValidMovesForPlayer } from './utils/gameLogic';
+import { createInitialBoard, getValidMovesForPlayer, applyMove } from './utils/gameLogic';
+import { getBestMove } from './utils/ai';
 import { Piece } from './components/Piece';
-import { saveGame, loadGame, clearGame } from './services/db';
+import { saveGame, loadGame } from './services/db';
 import { playSound } from './utils/audio';
 
 const App: React.FC = () => {
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   
   // AI State
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [previewMove, setPreviewMove] = useState<Move | null>(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -59,44 +61,91 @@ const App: React.FC = () => {
     }
   }, [board, turn, winner, mustCaptureFrom, gameMode, history, isDataLoaded]);
 
+  // --- Actions ---
+
+  const executeMove = useCallback((move: Move) => {
+    // 1. Save History (Snapshot BEFORE move)
+    setHistory(prev => [...prev, {
+      board: JSON.parse(JSON.stringify(board)), // Deep copy
+      turn,
+      mustCaptureFrom
+    }]);
+
+    // 2. Apply Move using shared logic
+    const { board: newBoard, turnEnded, mustCaptureFrom: nextMustCaptureFrom, promoted, captured } = applyMove(board, move);
+
+    // 3. Play Sounds
+    if (promoted) {
+      playSound('king');
+    } else {
+      playSound(captured ? 'capture' : 'move');
+    }
+
+    // 4. Update State
+    setBoard(newBoard);
+    setLastMove({ from: move.from, to: move.to });
+    setMustCaptureFrom(nextMustCaptureFrom);
+
+    if (turnEnded) {
+      setTurn(prev => prev === 'white' ? 'black' : 'white');
+      setSelectedPos(null);
+    } else {
+      // If turn continues, auto-select the piece
+      setSelectedPos(move.to);
+    }
+  }, [board, turn, mustCaptureFrom]);
+
   // --- AI Logic Hook ---
   useEffect(() => {
     if (winner || !isDataLoaded || showMenu) return;
 
-    // AI only plays Black in PvE
-    if (gameMode === 'pve' && turn === 'black' && !isAiThinking) {
-      setIsAiThinking(true);
-      
-      const aiTimeout = setTimeout(() => {
-        // Calculate moves
-        const moves = getValidMovesForPlayer(board, 'black', mustCaptureFrom);
+    // Trigger AI logic ONLY if it is Black's turn and Game Mode is PvE
+    if (gameMode === 'pve' && turn === 'black') {
+      let cancelled = false;
+
+      const runAiTurn = async () => {
+        // Prevent re-entry if already visualising (though effect cleanup handles most of this)
+        setIsAiThinking(true);
+
+        // 1. Thinking Time Simulation
+        await new Promise(resolve => setTimeout(resolve, 600));
+        if (cancelled) return;
+
+        // 2. Calculate Move
+        // We pass the current state variables. Since this function is inside the effect,
+        // it closes over the values of 'board' and 'mustCaptureFrom' that triggered this effect.
+        const bestMove = getBestMove(board, 'black', mustCaptureFrom);
         
-        if (moves.length === 0) {
+        if (!bestMove) {
           setWinner('white'); // Human wins
           playSound('win');
           setIsAiThinking(false);
           return;
         }
 
-        // Simple AI: Random Valid Move
-        // Since getValidMovesForPlayer already enforces Max Capture rules, any move here is "optimal" by rule,
-        // though strategy (positioning) is random.
-        const randomMove = moves[Math.floor(Math.random() * moves.length)];
-        executeMove(randomMove);
-        setIsAiThinking(false);
-      }, 1000); // 1 second thinking time
+        // 3. Highlight/Preview
+        setPreviewMove(bestMove);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (cancelled) return;
 
-      return () => clearTimeout(aiTimeout);
+        // 4. Execute
+        executeMove(bestMove);
+        setPreviewMove(null);
+        setIsAiThinking(false);
+      };
+
+      runAiTurn();
+
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [board, turn, gameMode, winner, isDataLoaded, mustCaptureFrom, isAiThinking]);
+  }, [board, turn, gameMode, winner, isDataLoaded, mustCaptureFrom, showMenu, executeMove]); 
+  // IMPORTANT: Removed 'isAiThinking' from dependencies to prevent cancellation loop
 
   // --- Core Game Loop (Human) ---
   useEffect(() => {
     if (!isDataLoaded || winner || (gameMode === 'pve' && turn === 'black')) {
-      // Don't calculate moves for UI if game over or it's AI's turn
-      if (gameMode !== 'pve' || turn !== 'black') {
-          // Keep moves clear if not interactive
-      }
       return;
     }
 
@@ -126,76 +175,6 @@ const App: React.FC = () => {
     }
   }, [board, turn, mustCaptureFrom, winner, isDataLoaded, selectedPos?.row, selectedPos?.col, gameMode]);
 
-
-  // --- Actions ---
-
-  const executeMove = (move: Move) => {
-    // 1. Save History (Snapshot BEFORE move)
-    // Only save history if starting a new turn or sequence, avoid saving every step of a multi-jump if handled differently,
-    // but for simplicity, we save every state change so Undo is granular.
-    setHistory(prev => [...prev, {
-      board: JSON.parse(JSON.stringify(board)), // Deep copy
-      turn,
-      mustCaptureFrom
-    }]);
-
-    const newBoard = board.map((row) => row.map((p) => (p ? { ...p } : null)));
-    const movingPiece = newBoard[move.from.row][move.from.col]!;
-
-    // 2. Move Piece
-    newBoard[move.to.row][move.to.col] = movingPiece;
-    newBoard[move.from.row][move.from.col] = null;
-
-    // 3. Remove Captured Pieces
-    let captureSound = false;
-    if (move.captures.length > 0) {
-      captureSound = true;
-      move.captures.forEach((pos) => {
-        newBoard[pos.row][pos.col] = null;
-      });
-    }
-
-    // 4. Handle Promotion
-    let promoted = false;
-    if (!movingPiece.isKing) {
-      if ((movingPiece.color === 'white' && move.to.row === 0) ||
-          (movingPiece.color === 'black' && move.to.row === BOARD_SIZE - 1)) {
-        movingPiece.isKing = true;
-        promoted = true;
-        playSound('king');
-      }
-    }
-
-    if (!promoted) {
-      playSound(captureSound ? 'capture' : 'move');
-    }
-
-    // 5. Update Board
-    setBoard(newBoard);
-    setLastMove({ from: move.from, to: move.to });
-
-    const wasCapture = move.captures.length > 0;
-
-    // 6. Next Turn Logic
-    if (wasCapture && !promoted) {
-      // Check for multi-jump
-      const nextMoves = getValidMovesForPlayer(newBoard, turn, move.to);
-      if (nextMoves.length > 0) {
-        setMustCaptureFrom(move.to);
-        setSelectedPos(move.to);
-      } else {
-        endTurn();
-      }
-    } else {
-      endTurn();
-    }
-  };
-
-  const endTurn = () => {
-    setTurn(prev => prev === 'white' ? 'black' : 'white');
-    setMustCaptureFrom(null);
-    setSelectedPos(null);
-  };
 
   const handleSquareClick = (r: number, c: number) => {
     if (winner || !isDataLoaded || showMenu) return;
@@ -242,38 +221,21 @@ const App: React.FC = () => {
 
   const handleUndo = () => {
     if (history.length === 0) return;
-    if (winner) setWinner(null); // Reset winner state if undoing the winning move
+    if (winner) setWinner(null);
 
-    // If PvE and it's White's turn, we need to undo Black's move AND White's previous move
-    // to get back to White's turn.
-    // However, if we are in the middle of a multi-jump, just undo one step.
+    // Logic for Undo in PvE:
+    // If it is White's turn, we must undo Black's move AND White's previous move.
+    // However, if we are in the middle of a multi-jump (turn didn't change), just undo one step.
     
     let stepsToPop = 1;
     
-    // Logic: 
-    // If PvE:
-    //   If Current Turn is White (Human) AND History[last] was Black (AI) -> Undo 2 steps (AI then Human)
-    //   If Current Turn is Black (AI) -> Undo 1 step (Human just moved) - but usually AI moves instantly.
-    //   Wait, AI moves are async. If I hit undo while AI is "thinking", we should cancel logic?
-    //   The simplest reliable undo is single step, but for PvE it feels weird to undo to the AI's turn.
-    
-    // Better Logic:
-    // Just pop one state. The user will see the board revert.
-    // If it reverts to AI's turn, the AI effect will trigger immediately and move again?
-    // YES. So in PvE, if I undo, I go back to start of AI turn, AI moves immediately again (maybe same move).
-    // So effectively I can't undo my move unless I undo TWICE.
-    
-    if (gameMode === 'pve') {
-       // If it is currently White's turn, the last history item was start of Black's turn. 
-       // The item before that was start of White's turn.
-       // We likely want to go back to start of White's turn.
-       if (turn === 'white' && history.length >= 2) {
-          // Check if previous turn in history was Black
-          const lastState = history[history.length - 1];
-          if (lastState.turn === 'black') {
-             stepsToPop = 2;
-          }
-       }
+    if (gameMode === 'pve' && turn === 'white') {
+        if (history.length >= 1) {
+            const lastState = history[history.length - 1];
+            if (lastState.turn === 'black') {
+                stepsToPop = 2;
+            }
+        }
     }
 
     const newHistory = [...history];
@@ -288,8 +250,10 @@ const App: React.FC = () => {
         setTurn(targetState.turn);
         setMustCaptureFrom(targetState.mustCaptureFrom);
         setHistory(newHistory);
-        setLastMove(null); // Clear last move highlight or store in history if needed (optional refinement)
+        setLastMove(null);
         setSelectedPos(null);
+        setPreviewMove(null);
+        setIsAiThinking(false);
         playSound('move');
     }
   };
@@ -304,6 +268,8 @@ const App: React.FC = () => {
     setSelectedPos(null);
     setHistory([]);
     setGameMode(mode);
+    setPreviewMove(null);
+    setIsAiThinking(false);
     setShowMenu(false);
     playSound('start');
   };
@@ -317,6 +283,10 @@ const App: React.FC = () => {
     const isValidTarget = selectedPos && validMoves.some(m => 
       m.from.row === selectedPos.row && m.from.col === selectedPos.col && m.to.row === r && m.to.col === c
     );
+    
+    // AI Preview Highlights
+    const isPreviewFrom = previewMove?.from.row === r && previewMove?.from.col === c;
+    const isPreviewTo = previewMove?.to.row === r && previewMove?.to.col === c;
 
     let classes = `relative w-full h-full flex items-center justify-center select-none transition-colors duration-150 `;
     
@@ -327,7 +297,9 @@ const App: React.FC = () => {
     }
 
     if (isSelected) classes += ` ${COLORS.highlight} z-10`;
-    if ((isLastMoveFrom || isLastMoveTo) && !isSelected) classes += ` ${COLORS.lastMove}`;
+    if (isPreviewFrom || isPreviewTo) classes += ` bg-orange-500/50 ring-4 ring-orange-400 z-20`;
+    else if ((isLastMoveFrom || isLastMoveTo) && !isSelected) classes += ` ${COLORS.lastMove}`;
+    
     if (isValidTarget) classes += ` cursor-pointer hover:bg-green-500/30`;
 
     return { classes, isValidTarget };
@@ -353,7 +325,7 @@ const App: React.FC = () => {
             <div className={`px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2 transition-colors duration-300 ${turn === 'white' ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-slate-100 border border-slate-600'}`}>
             <div className={`w-3 h-3 rounded-full ${turn === 'white' ? 'bg-slate-900' : 'bg-slate-100'}`}></div>
             {winner ? "Game Over" : (
-                gameMode === 'pve' && turn === 'black' ? 'Computer...' : (turn === 'white' ? "White's Turn" : "Black's Turn")
+                gameMode === 'pve' && turn === 'black' ? 'Computer Thinking...' : (turn === 'white' ? "White's Turn" : "Black's Turn")
             )}
             </div>
         </div>
