@@ -46,12 +46,16 @@ const getMovesForPiece = (
   const { row, col } = pos;
   const isWhite = piece.color === 'white';
   
-  // Directions based on color for men (Kings use all)
+  // Directions based on color for men movement (Kings use all)
   const forwardDirs = isWhite 
     ? [{ r: -1, c: -1 }, { r: -1, c: 1 }] 
     : [{ r: 1, c: -1 }, { r: 1, c: 1 }];
   
+  // Non-capture moves: Men = Forward only, Kings = All
   const moveDirs = piece.isKing ? DIRECTIONS : forwardDirs;
+
+  // Capture moves: Men = All (Backward allowed), Kings = All
+  const captureDirs = DIRECTIONS;
 
   // 1. NON-CAPTURE MOVES (Only if not forced to capture elsewhere, handled by higher level)
   if (piece.isKing) {
@@ -82,8 +86,8 @@ const getMovesForPiece = (
 
   // 2. CAPTURE MOVES
   if (!piece.isKing) {
-    // Men Captures (Forward Diagonal Only)
-    for (const dir of forwardDirs) { 
+    // Men Captures (All Diagonal Directions allowed)
+    for (const dir of captureDirs) { 
       const midR = row + dir.r;
       const midC = col + dir.c;
       const destR = row + (dir.r * 2);
@@ -235,15 +239,17 @@ export const getValidMovesForPlayer = (
     }
   }
 
-  // 3. If captures exist, enforce Max Capture Rule
+  // 3. If captures exist, enforce Mandatory Capture
   if (maxCaptureCount > 0) {
-    // Filter sequences that match the max count
-    const bestSequences = captureSequences.filter(s => s.count === maxCaptureCount);
+    // User Update: RELAXED RULE.
+    // Originally, Dama forces you to take the path with MAX captures.
+    // The user requested: "if I have the chance to get the opponent piece forward or backward, I should be the one to make that choice."
+    // This implies removing the strict filter for the maximum count. 
+    // We return ALL available capture start moves.
     
-    // Flatten to just the immediate valid next moves
     const distinctMoves = new Map<string, Move>(); 
     
-    bestSequences.forEach(seq => {
+    captureSequences.forEach(seq => {
         const firstMove = seq.moves[0]; // The immediate next step
         const key = `${firstMove.from.row}-${firstMove.from.col}-${firstMove.to.row}-${firstMove.to.col}`;
         distinctMoves.set(key, firstMove);

@@ -11,7 +11,7 @@ export const Piece: React.FC<PieceProps> = ({ piece }) => {
   return (
     <div
       className={`
-        w-[80%] h-[80%] rounded-full shadow-lg flex items-center justify-center transition-transform duration-200
+        w-[80%] aspect-square rounded-full shadow-lg flex items-center justify-center transition-transform duration-200
         ${isWhite 
           ? 'bg-slate-100 border-4 border-slate-300 shadow-slate-900/20' 
           : 'bg-slate-800 border-4 border-slate-600 shadow-black/40'}

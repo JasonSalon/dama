@@ -304,14 +304,13 @@ const App: React.FC = () => {
   if (!isDataLoaded) return <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-white font-bold">Loading...</div>;
 
   return (
-    // Fixed inset-0 ensures full viewport usage without scrolling
-    <div className="fixed inset-0 bg-slate-900 flex flex-col overflow-hidden">
+    <div className="min-h-[100dvh] bg-slate-900 flex flex-col text-slate-100">
       
-      {/* HEADER - Flex-none ensures it doesn't grow. Compact padding. */}
-      <header className="flex-none w-full bg-slate-800/80 backdrop-blur border-b border-slate-700 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+      {/* HEADER */}
+      <header className="flex-none bg-slate-800/80 backdrop-blur border-b border-slate-700 z-30 shadow-md">
+        <div className="max-w-3xl mx-auto w-full px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-                <h1 className="text-lg md:text-2xl font-bold text-white tracking-tight">Dama</h1>
+                <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white">Dama</h1>
                 <div className="hidden sm:flex text-xs text-slate-400 gap-2 items-center border-l border-slate-600 pl-3">
                     <span className="bg-slate-700 px-2 py-0.5 rounded text-slate-200">{gameMode === 'pve' ? 'vs AI' : '2 Player'}</span>
                 </div>
@@ -329,16 +328,11 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN CONTENT - Flex-1 with min-h-0 allows the board to shrink/grow to fit EXACTLY the available space */}
-      <main className="flex-1 w-full min-h-0 relative flex items-center justify-center p-2 md:p-4 bg-slate-900">
+      {/* MAIN CONTENT */}
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
         
-        {/* Responsive Board Container: 
-            aspect-square: Forces 1:1 ratio
-            max-h-full: Limits height to parent height
-            max-w-full: Limits width to parent width
-            The result is the largest possible square that fits in the view.
-        */}
-        <div className="relative aspect-square h-full max-h-full w-full max-w-full shadow-2xl bg-slate-800 rounded sm:rounded-lg overflow-hidden border-2 sm:border-4 border-slate-700">
+        {/* Board Container - Standard Responsive Box */}
+        <div className="w-full max-w-lg aspect-square relative shadow-2xl bg-slate-800 border-4 border-slate-700 rounded-lg overflow-hidden">
           
             {/* The Grid */}
             <div className="w-full h-full grid grid-cols-8 grid-rows-8">
@@ -356,12 +350,12 @@ const App: React.FC = () => {
                         <div className="absolute w-[30%] h-[30%] rounded-full bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] z-20 pointer-events-none animate-pulse" />
                         )}
                         
-                        {/* Coordinates (Only A1 for reference to keep it clean) */}
+                        {/* Coordinates (Only A1) */}
                         {c === 0 && r === 7 && <span className="absolute bottom-0.5 left-1 text-[8px] sm:text-[10px] text-slate-500 font-mono select-none">A1</span>}
 
                         {/* Piece */}
                         {piece && (
-                        <div className="z-10 w-full h-full flex items-center justify-center p-[12%]">
+                        <div className="z-10 w-full h-full flex items-center justify-center p-[10%]">
                             <Piece piece={piece} />
                         </div>
                         )}
@@ -415,10 +409,10 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* FOOTER - Flex-none. Controls. */}
+      {/* FOOTER */}
       {!showMenu && !winner && (
-        <footer className="flex-none w-full bg-slate-800/50 border-t border-slate-700/50">
-            <div className="max-w-2xl mx-auto px-4 py-2 flex items-center justify-between">
+        <footer className="flex-none bg-slate-800/80 backdrop-blur border-t border-slate-700/50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <div className="max-w-3xl mx-auto w-full px-4 py-3 flex items-center justify-between">
                 <button 
                     onClick={() => setShowMenu(true)}
                     className="text-slate-400 hover:text-white text-xs sm:text-sm font-medium px-2 py-1 rounded hover:bg-slate-700 transition-colors"
