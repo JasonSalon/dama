@@ -104,7 +104,6 @@ const App: React.FC = () => {
       let cancelled = false;
 
       const runAiTurn = async () => {
-        // Prevent re-entry if already visualising (though effect cleanup handles most of this)
         setIsAiThinking(true);
 
         // 1. Thinking Time Simulation
@@ -112,8 +111,6 @@ const App: React.FC = () => {
         if (cancelled) return;
 
         // 2. Calculate Move
-        // We pass the current state variables. Since this function is inside the effect,
-        // it closes over the values of 'board' and 'mustCaptureFrom' that triggered this effect.
         const bestMove = getBestMove(board, 'black', mustCaptureFrom);
         
         if (!bestMove) {
@@ -140,8 +137,7 @@ const App: React.FC = () => {
         cancelled = true;
       };
     }
-  }, [board, turn, gameMode, winner, isDataLoaded, mustCaptureFrom, showMenu, executeMove]); 
-  // IMPORTANT: Removed 'isAiThinking' from dependencies to prevent cancellation loop
+  }, [board, turn, gameMode, winner, isDataLoaded, mustCaptureFrom, showMenu, executeMove]);
 
   // --- Core Game Loop (Human) ---
   useEffect(() => {
@@ -305,159 +301,160 @@ const App: React.FC = () => {
     return { classes, isValidTarget };
   };
 
-  if (!isDataLoaded) return <div className="flex h-screen items-center justify-center bg-slate-900 text-white font-bold">Loading Dama...</div>;
+  if (!isDataLoaded) return <div className="fixed inset-0 flex items-center justify-center bg-slate-900 text-white font-bold">Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 touch-none">
+    // Fixed inset-0 ensures full viewport usage without scrolling
+    <div className="fixed inset-0 bg-slate-900 flex flex-col overflow-hidden">
       
-      {/* Header */}
-      <div className="w-full max-w-lg flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-100 tracking-tight">Filipino Dama</h1>
-          <div className="flex gap-2 text-xs text-slate-400">
-             <span>{gameMode === 'pve' ? 'vs Computer' : '2 Player'}</span>
-             <span>•</span>
-             <button onClick={() => setShowRules(true)} className="underline hover:text-amber-400">Rules</button>
-          </div>
-        </div>
-        
-        <div className="flex flex-col items-end gap-2">
-            <div className={`px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2 transition-colors duration-300 ${turn === 'white' ? 'bg-slate-100 text-slate-900' : 'bg-slate-800 text-slate-100 border border-slate-600'}`}>
-            <div className={`w-3 h-3 rounded-full ${turn === 'white' ? 'bg-slate-900' : 'bg-slate-100'}`}></div>
-            {winner ? "Game Over" : (
-                gameMode === 'pve' && turn === 'black' ? 'Computer Thinking...' : (turn === 'white' ? "White's Turn" : "Black's Turn")
-            )}
-            </div>
-        </div>
-      </div>
-
-      {/* Board Container */}
-      <div className="relative w-full max-w-lg aspect-square bg-slate-800 rounded-lg border-4 border-slate-700 shadow-2xl overflow-hidden">
-        
-        {/* Main Board Grid */}
-        <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
-          {board.map((row, r) => 
-            row.map((piece, c) => {
-              const { classes, isValidTarget } = getCellClass(r, c);
-              return (
-                <div 
-                  key={`${r}-${c}`}
-                  className={classes}
-                  onClick={() => handleSquareClick(r, c)}
-                >
-                  {/* Valid Move Marker */}
-                  {isValidTarget && (
-                    <div className="absolute w-3 h-3 md:w-5 md:h-5 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)] z-20 pointer-events-none" />
-                  )}
-                  
-                  {/* Coordinate Labels */}
-                  {c === 0 && r === 7 && <span className="absolute bottom-0.5 left-1 text-[8px] md:text-[10px] text-slate-400 font-mono">A1</span>}
-
-                  {/* Piece */}
-                  {piece && (
-                    <div className="z-10 w-full h-full flex items-center justify-center p-[10%]">
-                      <Piece piece={piece} />
-                    </div>
-                  )}
+      {/* HEADER - Flex-none ensures it doesn't grow. Compact padding. */}
+      <header className="flex-none w-full bg-slate-800/80 backdrop-blur border-b border-slate-700 z-30">
+        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <h1 className="text-lg md:text-2xl font-bold text-white tracking-tight">Dama</h1>
+                <div className="hidden sm:flex text-xs text-slate-400 gap-2 items-center border-l border-slate-600 pl-3">
+                    <span className="bg-slate-700 px-2 py-0.5 rounded text-slate-200">{gameMode === 'pve' ? 'vs AI' : '2 Player'}</span>
                 </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Winner Overlay */}
-        {winner && (
-          <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 animate-in fade-in zoom-in duration-300">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-2 drop-shadow-lg text-center">
-              {winner === 'draw' ? 'Draw!' : `${winner === 'white' ? 'White' : 'Black'} Wins!`}
-            </h2>
-            <p className="text-amber-400 font-semibold text-lg mb-8">
-                {gameMode === 'pve' && winner === 'white' ? "You defeated the Computer!" : ""}
-                {gameMode === 'pve' && winner === 'black' ? "The Computer Won!" : ""}
-            </p>
-            <div className="flex gap-4">
-                <button 
-                  onClick={handleUndo}
-                  className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-full shadow-lg transition-all"
-                >
-                  Undo Last
-                </button>
-                <button 
-                  onClick={() => setShowMenu(true)}
-                  className="px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full shadow-lg transition-all transform hover:scale-105 active:scale-95"
-                >
-                  New Game
+            </div>
+            
+            <div className="flex items-center gap-3">
+                <div className={`px-3 py-1 rounded-full font-bold shadow-sm flex items-center gap-2 text-xs md:text-sm transition-colors ${turn === 'white' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100 border border-slate-600'}`}>
+                    <div className={`w-2 h-2 rounded-full ${turn === 'white' ? 'bg-slate-900' : 'bg-slate-100'}`}></div>
+                    {winner ? "Game Over" : (gameMode === 'pve' && turn === 'black' ? 'Thinking...' : (turn === 'white' ? "White" : "Black"))}
+                </div>
+                <button onClick={() => setShowRules(true)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                 </button>
             </div>
-          </div>
-        )}
-
-        {/* Main Menu Overlay */}
-        {showMenu && (
-             <div className="absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center">
-                 <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">Filipino Dama</h1>
-                 <p className="text-slate-400 mb-8 max-w-xs">Play the traditional checkers variant with flying kings and mandatory captures.</p>
-                 
-                 <div className="flex flex-col gap-3 w-full max-w-xs">
-                     <button onClick={() => startNewGame('pve')} className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-105">
-                        Play vs Computer
-                     </button>
-                     <button onClick={() => startNewGame('pvp')} className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl shadow-lg transition-all">
-                        2 Player Local
-                     </button>
-                     {history.length > 0 && (
-                         <button onClick={() => setShowMenu(false)} className="mt-4 text-slate-400 underline hover:text-white">
-                             Resume Game
-                         </button>
-                     )}
-                 </div>
-             </div>
-        )}
-      </div>
-
-      {/* Footer Controls */}
-      {!showMenu && !winner && (
-        <div className="mt-6 flex w-full max-w-lg justify-between gap-4">
-           <button 
-            onClick={() => setShowMenu(true)}
-            className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm font-semibold"
-          >
-            Menu
-          </button>
-
-          <div className="flex gap-3">
-            <button 
-                onClick={handleUndo}
-                disabled={history.length === 0 || (gameMode === 'pve' && turn === 'black')}
-                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 rounded-lg font-semibold transition-colors shadow-md flex items-center gap-2"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74-2.74L3 12" /><path d="M3 3v9h9" /></svg>
-                Undo
-            </button>
-          </div>
         </div>
+      </header>
+
+      {/* MAIN CONTENT - Flex-1 with min-h-0 allows the board to shrink/grow to fit EXACTLY the available space */}
+      <main className="flex-1 w-full min-h-0 relative flex items-center justify-center p-2 md:p-4 bg-slate-900">
+        
+        {/* Responsive Board Container: 
+            aspect-square: Forces 1:1 ratio
+            max-h-full: Limits height to parent height
+            max-w-full: Limits width to parent width
+            The result is the largest possible square that fits in the view.
+        */}
+        <div className="relative aspect-square h-full max-h-full w-full max-w-full shadow-2xl bg-slate-800 rounded sm:rounded-lg overflow-hidden border-2 sm:border-4 border-slate-700">
+          
+            {/* The Grid */}
+            <div className="w-full h-full grid grid-cols-8 grid-rows-8">
+                {board.map((row, r) => 
+                row.map((piece, c) => {
+                    const { classes, isValidTarget } = getCellClass(r, c);
+                    return (
+                    <div 
+                        key={`${r}-${c}`}
+                        className={classes}
+                        onClick={() => handleSquareClick(r, c)}
+                    >
+                        {/* Valid Move Indicator */}
+                        {isValidTarget && (
+                        <div className="absolute w-[30%] h-[30%] rounded-full bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)] z-20 pointer-events-none animate-pulse" />
+                        )}
+                        
+                        {/* Coordinates (Only A1 for reference to keep it clean) */}
+                        {c === 0 && r === 7 && <span className="absolute bottom-0.5 left-1 text-[8px] sm:text-[10px] text-slate-500 font-mono select-none">A1</span>}
+
+                        {/* Piece */}
+                        {piece && (
+                        <div className="z-10 w-full h-full flex items-center justify-center p-[12%]">
+                            <Piece piece={piece} />
+                        </div>
+                        )}
+                    </div>
+                    );
+                })
+                )}
+            </div>
+
+            {/* Overlays (Winner / Menu) */}
+            {(winner || showMenu) && (
+                <div className="absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-xs sm:max-w-sm flex flex-col gap-4 animate-in fade-in zoom-in duration-300">
+                        <div className="text-center mb-2">
+                            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-1">
+                                {showMenu ? "Filipino Dama" : (winner === 'draw' ? 'Draw!' : `${winner === 'white' ? 'White' : 'Black'} Wins!`)}
+                            </h2>
+                            <p className="text-slate-400 text-sm">
+                                {showMenu ? "Classic Flying Kings Rules" : (gameMode === 'pve' && winner === 'white' ? "Victory!" : "Game Over")}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                            {showMenu ? (
+                                <>
+                                    <button onClick={() => startNewGame('pve')} className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2">
+                                        <span>Single Player</span>
+                                        <span className="text-amber-200 text-xs font-normal">(vs AI)</span>
+                                    </button>
+                                    <button onClick={() => startNewGame('pvp')} className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">
+                                        Two Player
+                                    </button>
+                                    {history.length > 0 && (
+                                        <button onClick={() => setShowMenu(false)} className="mt-2 text-slate-400 text-sm hover:text-white underline">Resume Game</button>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <button onClick={() => setShowMenu(true)} className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">
+                                        Play Again
+                                    </button>
+                                    <button onClick={handleUndo} className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl shadow-lg">
+                                        Undo Last Move
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+      </main>
+
+      {/* FOOTER - Flex-none. Controls. */}
+      {!showMenu && !winner && (
+        <footer className="flex-none w-full bg-slate-800/50 border-t border-slate-700/50">
+            <div className="max-w-2xl mx-auto px-4 py-2 flex items-center justify-between">
+                <button 
+                    onClick={() => setShowMenu(true)}
+                    className="text-slate-400 hover:text-white text-xs sm:text-sm font-medium px-2 py-1 rounded hover:bg-slate-700 transition-colors"
+                >
+                    Menu
+                </button>
+                
+                <button 
+                    onClick={handleUndo}
+                    disabled={history.length === 0 || (gameMode === 'pve' && turn === 'black')}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold rounded-lg transition-colors shadow-sm"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74-2.74L3 12" /><path d="M3 3v9h9" /></svg>
+                    Undo
+                </button>
+            </div>
+        </footer>
       )}
 
       {/* Rules Modal */}
       {showRules && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowRules(false)}>
-              <div className="bg-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-700 overflow-y-auto max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                  <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-2xl font-bold text-white">Rules of Dama</h2>
-                      <button onClick={() => setShowRules(false)} className="text-slate-400 hover:text-white">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
-                  </div>
-                  <div className="space-y-4 text-slate-300 text-sm leading-relaxed">
-                      <p><strong className="text-amber-400">Movement:</strong> Men move one step diagonally forward. Kings move any number of steps diagonally (Flying Kings).</p>
-                      <p><strong className="text-amber-400">Capturing:</strong> Capturing is mandatory! If you can capture, you must.</p>
-                      <p><strong className="text-amber-400">Max Capture Rule:</strong> If multiple capture paths exist, you must choose the one that captures the MOST pieces.</p>
-                      <p><strong className="text-amber-400">Promotion:</strong> A piece becomes a King when it ends its turn on the opposite edge of the board.</p>
-                      <p><strong className="text-amber-400">Winning:</strong> Capture all enemy pieces or block them so they cannot move.</p>
-                  </div>
-                  <button onClick={() => setShowRules(false)} className="w-full mt-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold">Got it</button>
-              </div>
-          </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setShowRules(false)}>
+            <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-700" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">How to Play</h3>
+                    <button onClick={() => setShowRules(false)} className="text-slate-400 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                </div>
+                <ul className="space-y-2 text-slate-300 text-sm list-disc pl-4 marker:text-amber-500">
+                    <li><strong>Move:</strong> Diagonal forward only (Men).</li>
+                    <li><strong>King:</strong> Move any distance diagonally (Flying King).</li>
+                    <li><strong>Capture:</strong> Mandatory! You must capture if possible.</li>
+                    <li><strong>Max Capture:</strong> If multiple paths exist, you must take the one with the MOST captures.</li>
+                </ul>
+                <button onClick={() => setShowRules(false)} className="w-full mt-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold transition-colors">Close</button>
+            </div>
+        </div>
       )}
     </div>
   );
