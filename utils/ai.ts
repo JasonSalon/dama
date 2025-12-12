@@ -1,14 +1,13 @@
 import { BoardState, Move, PlayerColor, Position } from '../types';
-import { getValidMovesForPlayer, applyMove, checkWinner, isValidPos } from './gameLogic';
+import { getValidMovesForPlayer, applyMove, checkWinner } from './gameLogic';
 import { BOARD_SIZE } from '../constants';
 
 // Evaluation Weights
 const KING_VALUE = 50;
 const MAN_VALUE = 10;
-const POSITION_WEIGHT = 1;
+const DEPTH = 3; // Reduced from 4 to 3 for performance/stability
 
 // Position bonuses for Men (encourages center control and advancement)
-// Flipped logic will be applied for White
 const POSITIONAL_BONUS = [
   [0, 0, 0, 0, 0, 0, 0, 0], // Row 0 (End)
   [4, 2, 4, 2, 4, 2, 4, 2],
@@ -36,11 +35,8 @@ const evaluateBoard = (board: BoardState, playerColor: PlayerColor): number => {
 
       // Positional Bonus for Men
       if (!piece.isKing) {
-        // If Black (moving down 0 -> 7), use row index directly? 
-        // Actually Black starts at 0-2 and moves to 7.
-        // White starts at 5-7 and moves to 0.
-        
-        // Let's orient the bonus table so higher values are closer to promotion
+        // Orient bonus table: Black moves 0->7, White moves 7->0
+        // We want the bonus array index 0 to be the "End" (Promotion) line for both.
         // For Black (Promotes at 7): Use r
         // For White (Promotes at 0): Use 7 - r
         const rowIdx = piece.color === 'black' ? r : (7 - r);
@@ -78,7 +74,9 @@ const minimax = (
   const moves = getValidMovesForPlayer(board, currentPlayer, mustCaptureFrom);
 
   if (moves.length === 0) {
-    // If current player has no moves, they lose
+    // If current player has no moves, they lose.
+    // If it is Maximizing turn (Root Player's turn), and they have no moves -> They lose -> Bad score
+    // If it is Minimizing turn (Opponent's turn), and they have no moves -> They lose -> Good score for Root
     return isMaximizing ? -10000 : 10000;
   }
 
@@ -89,12 +87,7 @@ const minimax = (
       const { board: nextBoard, turnEnded, mustCaptureFrom: nextCaptureFrom } = applyMove(board, move);
       
       const nextPlayer = turnEnded ? (currentPlayer === 'white' ? 'black' : 'white') : currentPlayer;
-      // If turn continues, we are still maximizing (it's still our turn)
-      // Wait, if it's still our turn, we are essentially extending the current ply.
-      // We shouldn't reduce depth if it's a multi-jump forced sequence, to ensure we see the outcome.
-      // But for safety against infinite loops (though unlikely in Dama), we can reduce depth or keep it same.
-      // Let's reduce depth to treat every hop as a decision node, but strictly typically multi-jumps are one "move".
-      // Simplified: Reduce depth.
+      // If turn continues, we are still optimizing for the same player.
       const nextIsMaximizing = turnEnded ? !isMaximizing : isMaximizing;
       
       const evalScore = minimax(nextBoard, depth - 1, alpha, beta, nextIsMaximizing, nextCaptureFrom, nextPlayer, rootPlayer);
@@ -135,31 +128,29 @@ export const getBestMove = (
 
   let bestMove: Move | null = null;
   let bestValue = -Infinity;
-  const depth = 4; // Search depth
-
-  // Shuffle moves to add variety if scores are tied (and prevent deterministic repetition in identical states)
-  const shuffledMoves = moves.sort(() => Math.random() - 0.5);
+  
+  // Shuffle moves to add variety if scores are tied
+  const shuffledMoves = [...moves].sort(() => Math.random() - 0.5);
 
   for (const move of shuffledMoves) {
     const { board: nextBoard, turnEnded, mustCaptureFrom: nextCaptureFrom } = applyMove(board, move);
     
-    // After we make our move, it's either still our turn (maximize) or opponent's turn (minimize)
-    // Actually, minimax entry point usually starts with "opponent's turn to minimize".
-    // If turnEnded, next is opponent (minimize).
-    // If !turnEnded, next is US (maximize).
-    
+    // Determine who plays next in the simulation
     const nextPlayer = turnEnded ? (player === 'white' ? 'black' : 'white') : player;
-    const isMaximizing = !turnEnded; // If turn didn't end, we want to maximize the REST of our turn.
+    
+    // If turn didn't end, we are still maximizing (continuing our turn)
+    // If turn ended, it's opponent's turn, so we minimize.
+    const isMaximizing = !turnEnded; 
     
     const moveValue = minimax(
       nextBoard, 
-      depth - 1, 
+      DEPTH - 1, 
       -Infinity, 
       Infinity, 
       isMaximizing, 
       nextCaptureFrom, 
       nextPlayer, 
-      player // We are the root player maximizing this score
+      player // Root player maximizing
     );
 
     if (moveValue > bestValue) {

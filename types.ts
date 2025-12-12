@@ -1,5 +1,18 @@
 export type PlayerColor = 'white' | 'black';
-export type GameMode = 'pvp' | 'pve';
+export type GameMode = 'pvp' | 'pve' | 'online';
+
+export interface User {
+  id: string;
+  username: string;
+  rating?: number;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  username: string;
+  rating: number;
+  rank?: number;
+}
 
 export interface Position {
   row: number;
@@ -50,4 +63,14 @@ export interface SerializedGame {
   mustCaptureFrom: Position | null;
   gameMode: GameMode;
   history: HistoryState[];
+  timeLeft: number;
+  roomId?: string; // For online play
+  roomName?: string; // Display name for the room
+  isPrivate?: boolean; // If true, requires password
+  password?: string; // stored in state for simplicity in this demo
+  lastUpdated?: number; // Timestamp for sync
+  players?: {
+    white?: string;
+    black?: string;
+  };
 }

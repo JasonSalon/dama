@@ -13,6 +13,8 @@ export const INITIAL_BOARD_LAYOUT = [
   [1, 0, 1, 0, 1, 0, 1, 0], // Row 7 (White)
 ];
 
+export const TURN_DURATION = 30; // Seconds per turn
+
 // Colors used for styling
 export const COLORS = {
   boardLight: 'bg-amber-100',
